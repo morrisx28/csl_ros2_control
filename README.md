@@ -27,10 +27,7 @@ source install/setup.bash
 ```
 source src/setup/setup_ports.sh
 
-cd src/hardwares/dds_bridge/hardware_dds_bridge/
-python3 hardware_manager.py
-
-ros2 launch reddog_hardware without_motor.launch.py 
+ros2 launch hardware_dds_bridge bringup.launch.py 
 
 ros2 launch rl_quadruped_controller bringup.launch.py pkg_description:=reddog_description
 ```
