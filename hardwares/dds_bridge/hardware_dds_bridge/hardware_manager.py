@@ -105,7 +105,6 @@ class DDSHandler:
                 else:
                     break
 
-            # self.joint_state_msg.position = self.mujoco_ang2real_ang(dof_pos)
             self.dof_pos = mujoco_ang2real_ang(dof_pos)
 
             self.last_joint_state_msg = self.joint_state_msg
@@ -181,8 +180,6 @@ class HardwareManager:
         self.motor_manager.control_cmd.reset()
         time.sleep(0.1)
         self.motor_manager.run()
-        # self.dds_handler = dds_handler
-        # self.motor_manager = motor_manager
 
         rclpy.init()
         self.linearASub = LinearASub()
@@ -204,19 +201,16 @@ class HardwareManager:
 
     def _run(self):
         while self.is_running:
-            # start_time = time.time()
             if self.dds_handler.dof_pos != []:
                 self.motor_manager.joint_angles = self.dds_handler.dof_pos
-                print("joint_angle",self.motor_manager.joint_angles)
-                # self.motor_manager.joint_angles = [0.0] * 12
             if self.dds_handler.pid_gain_msg.data is not None:
                 self.motor_manager.kp_kd_list = list(self.dds_handler.pid_gain_msg.data)
             else:
                 self.motor_manager.kp_kd_list = [13, 0.4]
+
             time.sleep(1/500)
 
             joint_dof_pos = self.motor_manager.joint_position
-
             if joint_dof_pos is None:
                 joint_dof_pos = [0.0] * 12
             joint_dof_pos = real_ang2mujoco_ang(joint_dof_pos)
@@ -248,11 +242,6 @@ class HardwareManager:
                 low_state.motor_state[i].tau_est = 0.0
 
             self.dds_handler.pub.Write(low_state)
-
-            # interval = start_time - time.time()
-            # print("interval", 1/interval)
-
-
         
     def run_low_cmd2hardware(self):
         self.is_running = True
@@ -261,27 +250,14 @@ class HardwareManager:
 
     def low_cmd2hardware(self):
         while self.is_running:
+            if self.dds_handler.dof_pos != []:
+                self.motor_manager.joint_angles = self.dds_handler.dof_pos
+            if self.dds_handler.pid_gain_msg.data is not None:
+                self.motor_manager.kp_kd_list = list(self.dds_handler.pid_gain_msg.data)
+            else:
+                self.motor_manager.kp_kd_list = [13, 0.4]
 
-            # print(self.dds_handler.dof_pos)
-            # print(self.dds_handler.dof_pos != [])
-            # print("pid_gain_msg: ", list(self.dds_handler.pid_gain_msg.data))
-            # if self.dds_handler.dof_pos != []:
-            #     self.motor_manager.joint_angles = self.dds_handler.dof_pos
-            # else:
-            # initial_angles: [0.0, 1.6, -2.99, -0.0, 1.6, -2.99, -0.0, -1.6, 2.99, 0.0, -1.6, 2.99]
-            # sit_angles: [0.0, 2.54, -2.7, -0.0, 2.54, -2.7, -0.0, -2.54, 2.7, 0.0, -2.54, 2.7]
-            # default_angles: [0.1, 0.785, -1.57, -0.1, 0.785, -1.57, -0.1, -0.785, 1.57, 0.1, -0.785, 1.57]
-            self.motor_manager.joint_angles = mujoco_ang2real_ang([0.0, 1.6, -2.99, -0.0, 1.6, -2.99, -0.0, -1.6, 2.99, 0.7, -0.1, 0.1])
-            # FR FL RR
-            # if self.dds_handler.pid_gain_msg.data is not None:
-            #     self.motor_manager.kp_kd_list = list(self.dds_handler.pid_gain_msg.data)
-            # else:
-            self.motor_manager.kp_kd_list = [13, 0.4]
             time.sleep(1/500)
-
-        # [[0.04186054691672325, -0.04186054691672325, 0.04186054691672325, -0.04186054691672325], 
-        #  [1.7239521741867065, -1.7239521741867065, -1.7239521741867065, 1.7239521741867065], 
-        #  [-2.226975917816162, 2.226975917816162, 2.226975917816162, -2.226975917816162]]
 
     def run_hardware2low_state(self):
         self.is_running = True
@@ -291,13 +267,14 @@ class HardwareManager:
     def hardware2low_state(self):
         while self.is_running:
             joint_dof_pos = self.motor_manager.joint_position
-
             if joint_dof_pos is None:
                 joint_dof_pos = [0.0] * 12
             joint_dof_pos = real_ang2mujoco_ang(joint_dof_pos)
+
             joint_dof_vel = self.motor_manager.joint_velocity
             if joint_dof_vel is None:
                 joint_dof_vel = [0.0] * 12
+            joint_dof_vel = real_ang2mujoco_ang(joint_dof_vel)
 
             quaternion = self.quaternionSub.get_Imu_data()
             angular_velocity = self.angularVSub.get_Imu_data()
@@ -320,9 +297,8 @@ class HardwareManager:
                 low_state.motor_state[i].dq = joint_dof_vel[i]
                 low_state.motor_state[i].tau_est = 0.0
 
-            # low_state.crc = crc.Crc(low_state)
             self.dds_handler.pub.Write(low_state)
-
+            
             time.sleep(1/500)
 
     def stop(self):
@@ -355,37 +331,5 @@ def main():
             traceback.print_exc()
             break
 
-    # dof = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-    # print(dof)
-    # dof = mujoco_ang2real_ang(dof)
-    # print(dof)
-    # flat_dof_pos = [0] * 12
-    # for i in range(3):
-    #     for j in range(4):
-    #         flat_dof_pos[4*i+j] = dof[i][j]
-    # dof = real_ang2mujoco_ang(flat_dof_pos)
-    # print(dof)
-
-
 if __name__ == '__main__':
     main()
-
-# [[-2.6510298252105713, 2.6510298252105713, 2.6510298252105713, -2.6510298252105713], 
-# [2.3300116062164307, -2.3300116062164307, -2.3300116062164307, 2.3300116062164307], 
-# [-0.00433365348726511, 0.00433365348726511, -0.00433365348726511, 0.00433365348726511]]
-
-# [motor_manager-1] [[ 2.04952884 -2.04952884 -2.04952884  2.04952884]
-# [motor_manager-1]  [-1.47034442  1.47034442  1.47034442 -1.47034442]
-# [motor_manager-1]  [-0.05756381  0.05756381 -0.05756381  0.05756381]]
-
-# [ros2_control_node-2] Current position: 
-# -0.0532158 -1.4723 -3.1199 
-# 0.0185016 -1.51999 -3.15766 
-# -0.0631342 1.54936 -3.08137 
-# 0.0516899 1.5692 3.07755 
-
-# [ros2_control_node-2] Current position: 
-# -0.0185016 1.51961 -3.15843 
-# -0.0535973 1.47879 -3.12066 
-# 0.0516899 -1.56996 3.07755 
-# -0.0700008 -1.55356 3.0848 
