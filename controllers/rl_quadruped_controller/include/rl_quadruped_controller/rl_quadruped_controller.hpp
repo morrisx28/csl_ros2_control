@@ -136,23 +136,12 @@ private:
 
   int one_step_obs_size_{45}, obs_buf_size_{6};
 
-  std::vector<float> max_angles_{1.04, 2.39, -0.1, 1.04, 2.39, -0.1, 1.04, -0.1, 2.69, 1.04, -0.1, 2.39};
-  std::vector<float> min_angles_{-1.04, 0.1, -2.39, -1.04, 0.1, -2.39, -1.04, -2.69, 0.1, -1.04, -2.69, 0.1};
                          
-
   std::vector<float> current_pos_;
-  float steps_ = 150.0; // 插值步數
-  int step_ = 0; // 當前步數
-  float duration_ = 5.0; // 總執行時間 (秒)
-  double step_time_ = duration_ / steps_; // 每步的時間間隔
-  // float step_time_ = 0.01; // 每步的時間間隔 (秒)
-
-  std::chrono::high_resolution_clock::time_point start_time_;
-  float running_time_ = 0.0;
+  float steps_ = 150.0; 
+  int step_ = 0;
 
   std::chrono::steady_clock::time_point last_time_;
-
-  std::ofstream action_log_;
 };
 
 }  // namespace rl_quadruped_controller

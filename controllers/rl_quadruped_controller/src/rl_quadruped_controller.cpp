@@ -179,8 +179,6 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RLQuad
     }
 
     current_pos_ = get_current_pos();
-
-    start_time_ = std::chrono::high_resolution_clock::now();
   }
   catch (const std::exception &e)
   {
@@ -323,8 +321,6 @@ void RLQuadrupedController::move()
     obs, 
     obs_buffer_.slice(1, 0, obs_buffer_.size(1) - one_step_obs_size_)
   }, 1);
-
-  std::cout << "obs_buffer_: " << obs_buffer_ << std::endl;
 
   obs = torch::clamp(obs, -100, 100);
 
