@@ -1,5 +1,5 @@
 <package format="2">
-    <name>bigreddog_description</name>
+    <name>big_reddog_description</name>
     <version>1.0.0</version>
     <description>
         <p>URDF Description package for bigreddog_description</p>
