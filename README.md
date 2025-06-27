@@ -2,7 +2,14 @@
 hardwares/hardware_unitree_mujoco ref: [legubiao/quadruped_ros2_control](https://github.com/legubiao/quadruped_ros2_control/tree/main/hardwares/hardware_unitree_mujoco)
 libraries/ros2_xsens_mti_driver ref: [DEMCON/ros2_xsens_mti_driver](https://github.com/DEMCON/ros2_xsens_mti_driver)
 
-
+## Installation Guide
+Follow install guide ref: [unitree_sdk2](https://github.com/unitreerobotics/unitree_sdk2)
+unzip libraries/torch-2.7.1+cpu-cp310-cp310-manylinux_2_28_aarch64.whl 
+move file inside torch.lib to torch/lib
+```
+echo 'export Torch_DIR=~/torch' >> ~/.bashrc
+echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/torch/lib' >> ~/.bashrc
+```
 ## Quick start
 ```
 cd ~/ros2_ws/src
