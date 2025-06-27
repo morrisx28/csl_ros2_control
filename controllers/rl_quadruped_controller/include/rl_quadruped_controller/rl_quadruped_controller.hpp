@@ -128,7 +128,7 @@ private:
   std::vector<float> cmd_{0.0, 0.0, 0.0};
   std::vector<float> latest_cmd_{0.0, 0.0, 0.0};
   std::vector<float> initial_angles_, sit_angles_, default_angles_, cmd_scale_;
-  float action_scale_{1.0}, ang_vel_scale_{1.0}, dof_pos_scale_{1.0}, dof_vel_scale_{1.0};
+  float action_scale_{1.0}, ang_vel_scale_{1.0}, dof_pos_scale_{1.0}, dof_vel_scale_{1.0}, kps_{0.0}, kds_{0.0};
 
   torch::jit::script::Module policy_;
   torch::Tensor obs_buffer_;

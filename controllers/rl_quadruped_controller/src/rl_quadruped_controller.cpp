@@ -117,6 +117,8 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RLQuad
     initial_angles_ = config["initial_angles"].as<std::vector<float>>();
     sit_angles_ = config["sit_angles"].as<std::vector<float>>();
     default_angles_ = config["default_angles"].as<std::vector<float>>();
+    kps_ = config["kps"].as<float>();
+    kds_ = config["kds"].as<float>();
 
     action_scale_ = config["action_scale"].as<float>();
     cmd_scale_ = config["cmd_scale"].as<std::vector<float>>();
@@ -245,15 +247,15 @@ void RLQuadrupedController::sit(int step, std::vector<float> current_pos)
     {
       float target_pos = current_pos[i] * float(1 - phase) + sit_angles_[i] * phase;
       ctrl_interfaces_.joint_position_command_interface_[i].get().set_value(target_pos);
-      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(13.0);
-      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(0.4);
+      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_);
+      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_);
     }
   } else {
     for (int i = 0; i < 12; ++i)
     {
       ctrl_interfaces_.joint_position_command_interface_[i].get().set_value(sit_angles_[i]);
-      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(13.0);
-      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(0.4);
+      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_);
+      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_);
     }
   }
 }
@@ -266,15 +268,15 @@ void RLQuadrupedController::stand(int step, std::vector<float> current_pos)
     {
       float target_pos = current_pos[i] * float(1 - phase) + default_angles_[i] * phase;
       ctrl_interfaces_.joint_position_command_interface_[i].get().set_value(target_pos);
-      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(13.0);
-      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(0.4);
+      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_);
+      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_);
     }
   } else {
     for (int i = 0; i < 12; ++i)
     {
       ctrl_interfaces_.joint_position_command_interface_[i].get().set_value(default_angles_[i]);
-      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(13.0);
-      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(0.4);
+      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_);
+      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_);
     }
   }
 }
@@ -308,7 +310,7 @@ void RLQuadrupedController::move()
 
   std::vector<torch::Tensor> obs_parts = {
     torch::tensor(latest_cmd_) * torch::tensor(cmd_scale_),
-    torch::tensor(ang_vel) * ang_vel_scale_ * 0.3,
+    torch::tensor(ang_vel) * ang_vel_scale_ ,
     torch::tensor(gravity),
     (torch::tensor(pos) - torch::tensor(default_angles_)) * dof_pos_scale_,
     torch::tensor(vel) * dof_vel_scale_,
@@ -330,8 +332,8 @@ void RLQuadrupedController::move()
   for (int i = 0; i < 12; ++i)
   {
     ctrl_interfaces_.joint_position_command_interface_[i].get().set_value(action[i].item<float>() * action_scale_ + default_angles_[i]);
-    ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(13.0);
-    ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(0.4);
+    ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_);
+    ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_);
   }
 
   for (int i = 0; i < 3; ++i)

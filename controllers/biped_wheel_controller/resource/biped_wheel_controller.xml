@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<library path="biped_wheel_controller">
+  <class name="biped_wheel_controller/BipedWheelController"
+         type="biped_wheel_controller::BipedWheelController"
+         base_class_type="controller_interface::ControllerInterface">
+    <description>Test controller for biped wheel robots using ROS2 Control</description>
+  </class>
+</library>

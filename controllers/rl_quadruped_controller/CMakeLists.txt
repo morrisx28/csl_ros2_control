@@ -4,6 +4,7 @@ project(rl_quadruped_controller)
 # Enable C++17
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_PREFIX_PATH "/home/crazydogv2/libtorch/lib")
 
 # Find dependencies
 find_package(ament_cmake REQUIRED)
