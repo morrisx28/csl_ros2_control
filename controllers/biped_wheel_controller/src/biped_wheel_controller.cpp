@@ -185,14 +185,6 @@ std::chrono::steady_clock::time_point last_time_;
 
 controller_interface::return_type BipedWheelController::update(const rclcpp::Time &, const rclcpp::Duration &)
 {
-  // Check the frequency
-  // auto now = std::chrono::steady_clock::now();
-  // if (last_time_.time_since_epoch().count() != 0) {
-  //   auto duration = std::chrono::duration_cast<std::chrono::duration<double>>(now - last_time_);
-  //   double frequency = 1.0 / duration.count();  // 計算頻率（Hz）
-  //   std::cout << "Update frequency: " << frequency << " Hz" << std::endl;
-  // }
-  // last_time_ = now;
 
   if (mode_ != prev_mode_) {
     is_mode_change_ = true;
@@ -253,12 +245,6 @@ void BipedWheelController::sit(int step, std::vector<float> current_pos)
 
 void BipedWheelController::stand_up(int step, std::vector<float> current_pos) 
 {
-  // ctrl_interfaces_.joint_velocity_command_interface_[2].get().set_value(0.5);
-  // ctrl_interfaces_.joint_kp_command_interface_[2].get().set_value(kps_[2]);
-  // ctrl_interfaces_.joint_kd_command_interface_[2].get().set_value(kds_[2]);
-  // ctrl_interfaces_.joint_velocity_command_interface_[5].get().set_value(0.5);
-  // ctrl_interfaces_.joint_kp_command_interface_[5].get().set_value(kps_[5]);
-  // ctrl_interfaces_.joint_kd_command_interface_[5].get().set_value(kds_[5]);
   if (step < steps_) {
     double phase = float(step)/float(steps_);
     for (int i = 0; i < 6; ++i)
@@ -285,10 +271,7 @@ void BipedWheelController::move()
   std::vector<float> pos(4), vel(6), ang_vel(3), quat(4), qvel(6);
   std::vector<float> default_pos{default_angles_[0], default_angles_[1], default_angles_[3], default_angles_[4]};
 
-  // for (int i = 0; i < 6; ++i)
-  // {
-  //   pos[i] = ctrl_interfaces_.joint_position_state_interface_[i].get().get_value();
-  // }
+
   pos[0] = ctrl_interfaces_.joint_position_state_interface_[0].get().get_value();
   pos[1] = ctrl_interfaces_.joint_position_state_interface_[1].get().get_value();
   pos[2] = ctrl_interfaces_.joint_position_state_interface_[3].get().get_value();
@@ -323,7 +306,6 @@ void BipedWheelController::move()
     torch::tensor(latest_cmd_) * torch::tensor(cmd_scale_),
     torch::tensor(ang_vel) * ang_vel_scale_,
     torch::tensor(gravity),
-    // (torch::tensor(pos) - torch::tensor(default_angles_)) * dof_pos_scale_,
     (torch::tensor(pos) - torch::tensor(default_pos)) * dof_pos_scale_,
     torch::tensor(qvel) * dof_vel_scale_,
     prev_action_
