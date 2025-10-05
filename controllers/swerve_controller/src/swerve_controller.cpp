@@ -1,15 +1,15 @@
-#include "biped_wheel_controller/biped_wheel_controller.hpp"
+#include "swerve_controller/swerve_controller.hpp"
 
 #include <pluginlib/class_list_macros.hpp>
 #include <yaml-cpp/yaml.h>
 
-namespace biped_wheel_controller
+namespace swerve_controller
 {
 
-BipedWheelController::BipedWheelController() = default;
+SwerveController::SwerveController() = default;
 using config_type = controller_interface::interface_configuration_type;
 
-controller_interface::InterfaceConfiguration BipedWheelController::command_interface_configuration() const
+controller_interface::InterfaceConfiguration SwerveController::command_interface_configuration() const
 {
   controller_interface::InterfaceConfiguration conf = {config_type::INDIVIDUAL, {}};
 
@@ -32,7 +32,7 @@ controller_interface::InterfaceConfiguration BipedWheelController::command_inter
   return conf;
 }
 
-controller_interface::InterfaceConfiguration BipedWheelController::state_interface_configuration() const
+controller_interface::InterfaceConfiguration SwerveController::state_interface_configuration() const
 {
   controller_interface::InterfaceConfiguration conf = {config_type::INDIVIDUAL, {}};
 
@@ -50,10 +50,15 @@ controller_interface::InterfaceConfiguration BipedWheelController::state_interfa
       conf.names.push_back(imu_name_ + "/" + interface_type);
   }
 
+  for (const auto& interface_type : foot_force_interface_types_)
+  {
+      conf.names.push_back(foot_force_name_ + "/" + interface_type);
+  }
+
   return conf;
 }
 
-rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn BipedWheelController::on_init()
+rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RLQuadrupedController::on_init()
 {
   try
   {
@@ -100,7 +105,7 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn BipedW
   return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
 }
 
-rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn BipedWheelController::on_configure(const rclcpp_lifecycle::State &)
+rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RLQuadrupedController::on_configure(const rclcpp_lifecycle::State &)
 {
   try
   {
@@ -109,13 +114,13 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn BipedW
     policy_ = torch::jit::load(policy_path_);
     YAML::Node config = YAML::LoadFile(config_path_);
 
+    initial_angles_ = config["initial_angles"].as<std::vector<float>>();
     sit_angles_ = config["sit_angles"].as<std::vector<float>>();
     default_angles_ = config["default_angles"].as<std::vector<float>>();
-    kps_ = config["kps"].as<std::vector<float>>();
-    kds_ = config["kds"].as<std::vector<float>>();
+    kps_ = config["kps"].as<float>();
+    kds_ = config["kds"].as<float>();
 
-    pos_action_scale_ = config["pos_action_scale"].as<float>();
-    vel_action_scale_ = config["vel_action_scale"].as<float>();
+    action_scale_ = config["action_scale"].as<float>();
     cmd_scale_ = config["cmd_scale"].as<std::vector<float>>();
     ang_vel_scale_ = config["ang_vel_scale"].as<float>();
     dof_pos_scale_ = config["dof_pos_scale"].as<float>();
@@ -137,7 +142,7 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn BipedW
   return CallbackReturn::SUCCESS;
 }
 
-rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn BipedWheelController::on_activate(const rclcpp_lifecycle::State &)
+rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RLQuadrupedController::on_activate(const rclcpp_lifecycle::State &)
 {
   try
   { 
@@ -165,6 +170,10 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn BipedW
         {
             ctrl_interfaces_.imu_state_interface_.emplace_back(interface);
         }
+        else if (interface.get_prefix_name() == foot_force_name_)
+        {
+            ctrl_interfaces_.foot_force_state_interface_.emplace_back(interface);
+        }
         else
         {
             state_interface_map_[interface.get_interface_name()]->push_back(interface);
@@ -183,14 +192,14 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn BipedW
 }
 std::chrono::steady_clock::time_point last_time_;
 
-controller_interface::return_type BipedWheelController::update(const rclcpp::Time &, const rclcpp::Duration &)
+controller_interface::return_type RLQuadrupedController::update(const rclcpp::Time &, const rclcpp::Duration &)
 {
   // Check the frequency
   // auto now = std::chrono::steady_clock::now();
   // if (last_time_.time_since_epoch().count() != 0) {
   //   auto duration = std::chrono::duration_cast<std::chrono::duration<double>>(now - last_time_);
   //   double frequency = 1.0 / duration.count();  // 計算頻率（Hz）
-  //   std::cout << "Update frequency: " << frequency << " Hz" << std::endl;
+  //   // std::cout << "Update frequency: " << frequency << " Hz" << std::endl;
   // }
   // last_time_ = now;
 
@@ -206,7 +215,7 @@ controller_interface::return_type BipedWheelController::update(const rclcpp::Tim
   if (mode_ == "sit") {
     sit(step_, current_pos_);
   } else if (mode_ == "stand") {
-    stand_up(step_, current_pos_);
+    stand(step_, current_pos_);
   } else if (mode_ == "move") {
     move();
   } else {
@@ -220,84 +229,71 @@ controller_interface::return_type BipedWheelController::update(const rclcpp::Tim
   return controller_interface::return_type::OK;
 }
 
-std::vector<float> BipedWheelController::get_current_pos()
+std::vector<float> RLQuadrupedController::get_current_pos()
 {
-  std::vector<float> pos(6);
-  for (int i = 0; i < 6; ++i)
+  std::vector<float> pos(12);
+  for (int i = 0; i < 12; ++i)
   {
     pos[i] = ctrl_interfaces_.joint_position_state_interface_[i].get().get_value();
   }
   return pos;
 }
 
-void BipedWheelController::sit(int step, std::vector<float> current_pos) 
+void RLQuadrupedController::sit(int step, std::vector<float> current_pos) 
 {
   if (step < steps_) {
     double phase = float(step)/float(steps_);
-    for (int i = 0; i < 6; ++i)
+    for (int i = 0; i < 12; ++i)
     {
       float target_pos = current_pos[i] * float(1 - phase) + sit_angles_[i] * phase;
       ctrl_interfaces_.joint_position_command_interface_[i].get().set_value(target_pos);
-      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_[i]);
-      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_[i]);
+      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_);
+      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_);
     }
   } else {
-    for (int i = 0; i < 6; ++i)
+    for (int i = 0; i < 12; ++i)
     {
       ctrl_interfaces_.joint_position_command_interface_[i].get().set_value(sit_angles_[i]);
-      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_[i]);
-      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_[i]);
+      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_);
+      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_);
     }
   }
 }
 
-void BipedWheelController::stand_up(int step, std::vector<float> current_pos) 
+void RLQuadrupedController::stand(int step, std::vector<float> current_pos) 
 {
-  // ctrl_interfaces_.joint_velocity_command_interface_[2].get().set_value(0.5);
-  // ctrl_interfaces_.joint_kp_command_interface_[2].get().set_value(kps_[2]);
-  // ctrl_interfaces_.joint_kd_command_interface_[2].get().set_value(kds_[2]);
-  // ctrl_interfaces_.joint_velocity_command_interface_[5].get().set_value(0.5);
-  // ctrl_interfaces_.joint_kp_command_interface_[5].get().set_value(kps_[5]);
-  // ctrl_interfaces_.joint_kd_command_interface_[5].get().set_value(kds_[5]);
   if (step < steps_) {
     double phase = float(step)/float(steps_);
-    for (int i = 0; i < 6; ++i)
+    for (int i = 0; i < 12; ++i)
     {
       float target_pos = current_pos[i] * float(1 - phase) + default_angles_[i] * phase;
       ctrl_interfaces_.joint_position_command_interface_[i].get().set_value(target_pos);
-      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_[i]);
-      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_[i]);
+      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_);
+      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_);
     }
   } else {
-    for (int i = 0; i < 6; ++i)
+    for (int i = 0; i < 12; ++i)
     {
       ctrl_interfaces_.joint_position_command_interface_[i].get().set_value(default_angles_[i]);
-      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_[i]);
-      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_[i]);
+      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_);
+      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_);
     }
   }
 }
 
-void BipedWheelController::move()
+void RLQuadrupedController::move()
 {
+  std::vector<float> pos(12), vel(12), ang_vel(3), quat(4);
 
-  // std::vector<float> pos(6), vel(6), ang_vel(3), quat(4), qvel(6);
-  std::vector<float> pos(4), vel(6), ang_vel(3), quat(4), qvel(6);
-  std::vector<float> default_pos{default_angles_[0], default_angles_[1], default_angles_[3], default_angles_[4]};
-
-  // for (int i = 0; i < 6; ++i)
-  // {
-  //   pos[i] = ctrl_interfaces_.joint_position_state_interface_[i].get().get_value();
-  // }
-  pos[0] = ctrl_interfaces_.joint_position_state_interface_[0].get().get_value();
-  pos[1] = ctrl_interfaces_.joint_position_state_interface_[1].get().get_value();
-  pos[2] = ctrl_interfaces_.joint_position_state_interface_[3].get().get_value();
-  pos[3] = ctrl_interfaces_.joint_position_state_interface_[4].get().get_value();
-
-  for (int i = 0; i < 6; ++i)
+  for (int i = 0; i < 12; ++i)
   {
-    qvel[i] = ctrl_interfaces_.joint_velocity_state_interface_[i].get().get_value();
+    pos[i] = ctrl_interfaces_.joint_position_state_interface_[i].get().get_value();
   }
+  for (int i = 0; i < 12; ++i)
+  {
+    vel[i] = ctrl_interfaces_.joint_velocity_state_interface_[i].get().get_value();
+  }
+
 
   quat[0] = ctrl_interfaces_.imu_state_interface_[0].get().get_value();
   quat[1] = ctrl_interfaces_.imu_state_interface_[1].get().get_value();
@@ -306,30 +302,22 @@ void BipedWheelController::move()
   ang_vel[0] = ctrl_interfaces_.imu_state_interface_[4].get().get_value();
   ang_vel[1] = ctrl_interfaces_.imu_state_interface_[5].get().get_value();
   ang_vel[2] = ctrl_interfaces_.imu_state_interface_[6].get().get_value();
-  // std::cout << "quat w: " << quat[0] << " x: " << quat[1] << " y: " << quat[2] <<  " z: " << quat[3] << std::endl;
-  // std::cout << "Ang vel x: " << ang_vel[0] << " y: " << ang_vel[1] << " z: " << ang_vel[2] << std::endl;
-
-  // pos[2], pos[5] = 0, 0;
-  // std::cout << "left wheel vel: " << vel[2] << " Right wheel vel: " << vel[5] << std::endl;
 
   std::vector<float> gravity(3);
-  gravity[0] = 2 * (-quat[1] * quat[3] + quat[0] * quat[2]);
+  gravity[0] = 2 * (quat[1] * quat[3] - quat[0] * quat[2]);
   gravity[1] = -2 * (quat[2] * quat[3] + quat[0] * quat[1]);
-  gravity[2] = 1 - 2 * (quat[0] * quat[0] + quat[3] * quat[3]);
-
-  torch::autograd::GradMode::set_enabled(false);
+  gravity[2] = -1 - 2 * (quat[1] * quat[1] + quat[2] * quat[2]);
 
   std::vector<torch::Tensor> obs_parts = {
     torch::tensor(latest_cmd_) * torch::tensor(cmd_scale_),
-    torch::tensor(ang_vel) * ang_vel_scale_,
+    torch::tensor(ang_vel) * ang_vel_scale_ ,
     torch::tensor(gravity),
-    // (torch::tensor(pos) - torch::tensor(default_angles_)) * dof_pos_scale_,
-    (torch::tensor(pos) - torch::tensor(default_pos)) * dof_pos_scale_,
-    torch::tensor(qvel) * dof_vel_scale_,
+    (torch::tensor(pos) - torch::tensor(default_angles_)) * dof_pos_scale_,
+    torch::tensor(vel) * dof_vel_scale_,
     prev_action_
   };
 
-  torch::Tensor obs = torch::cat(obs_parts).unsqueeze(0);
+  auto obs = torch::cat(obs_parts).unsqueeze(0);
   
   obs_buffer_ = torch::cat({
     obs, 
@@ -338,34 +326,15 @@ void BipedWheelController::move()
 
   obs = torch::clamp(obs, -100, 100);
 
-  torch::Tensor action = policy_.forward({obs_buffer_}).toTensor().squeeze();
-  // torch::Tensor action = torch::zeros({6});
+  auto action = policy_.forward({obs_buffer_}).toTensor().squeeze();
   prev_action_ = action;
 
-  // left thigh pos cmd
-  ctrl_interfaces_.joint_position_command_interface_[0].get().set_value(action[0].item<float>() * pos_action_scale_ + default_angles_[0]);
-  ctrl_interfaces_.joint_kp_command_interface_[0].get().set_value(kps_[0]);
-  ctrl_interfaces_.joint_kd_command_interface_[0].get().set_value(kds_[0]);
-  // left calf pos cmd
-  ctrl_interfaces_.joint_position_command_interface_[1].get().set_value(action[1].item<float>() * pos_action_scale_ + default_angles_[1]);
-  ctrl_interfaces_.joint_kp_command_interface_[1].get().set_value(kps_[1]);
-  ctrl_interfaces_.joint_kd_command_interface_[1].get().set_value(kds_[1]);
-  // left wheel vel cmd
-  ctrl_interfaces_.joint_velocity_command_interface_[2].get().set_value(action[2].item<float>() * vel_action_scale_);
-  ctrl_interfaces_.joint_kp_command_interface_[2].get().set_value(kps_[2]);
-  ctrl_interfaces_.joint_kd_command_interface_[2].get().set_value(kds_[2]);
-  // right thigh pos cmd
-  ctrl_interfaces_.joint_position_command_interface_[3].get().set_value(action[3].item<float>() * pos_action_scale_ + default_angles_[3]);
-  ctrl_interfaces_.joint_kp_command_interface_[3].get().set_value(kps_[3]);
-  ctrl_interfaces_.joint_kd_command_interface_[3].get().set_value(kds_[3]);
-  // right calf pos cmd
-  ctrl_interfaces_.joint_position_command_interface_[4].get().set_value(action[4].item<float>() * pos_action_scale_ + default_angles_[4]);
-  ctrl_interfaces_.joint_kp_command_interface_[4].get().set_value(kps_[4]);
-  ctrl_interfaces_.joint_kd_command_interface_[4].get().set_value(kds_[4]);
-  // right wheel vel cmd
-  ctrl_interfaces_.joint_velocity_command_interface_[5].get().set_value(action[5].item<float>() * vel_action_scale_);
-  ctrl_interfaces_.joint_kp_command_interface_[5].get().set_value(kps_[5]);
-  ctrl_interfaces_.joint_kd_command_interface_[5].get().set_value(kds_[5]);
+  for (int i = 0; i < 12; ++i)
+  {
+    ctrl_interfaces_.joint_position_command_interface_[i].get().set_value(action[i].item<float>() * action_scale_ + default_angles_[i]);
+    ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_);
+    ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_);
+  }
 
   for (int i = 0; i < 3; ++i)
   {
@@ -373,8 +342,6 @@ void BipedWheelController::move()
   }
 }
 
+} // namespace rl_quadruped_controller
 
-
-} // namespace biped_wheel_controller
-
-PLUGINLIB_EXPORT_CLASS(biped_wheel_controller::BipedWheelController, controller_interface::ControllerInterface)
+PLUGINLIB_EXPORT_CLASS(rl_quadruped_controller::RLQuadrupedController, controller_interface::ControllerInterface)

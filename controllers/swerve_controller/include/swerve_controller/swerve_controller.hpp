@@ -7,7 +7,6 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <vector>
-#include <fstream>
 #include <hardware_interface/loaned_command_interface.hpp>
 #include <hardware_interface/loaned_state_interface.hpp>
 
@@ -36,6 +35,9 @@ struct CtrlInterfaces
     imu_state_interface_;
 
     std::vector<std::reference_wrapper<hardware_interface::LoanedStateInterface>>
+    foot_force_state_interface_;
+
+    std::vector<std::reference_wrapper<hardware_interface::LoanedStateInterface>>
     odom_state_interface_;
 
     CtrlInterfaces() = default;
@@ -53,16 +55,17 @@ struct CtrlInterfaces
         joint_velocity_state_interface_.clear();
 
         imu_state_interface_.clear();
+        foot_force_state_interface_.clear();
     }
 };
 
-namespace biped_wheel_controller
+namespace rl_quadruped_controller
 {
 
-class BipedWheelController : public controller_interface::ControllerInterface
+class RLQuadrupedController : public controller_interface::ControllerInterface
 {
 public:
-  BipedWheelController();
+  RLQuadrupedController();
 
   controller_interface::InterfaceConfiguration command_interface_configuration() const override;
   controller_interface::InterfaceConfiguration state_interface_configuration() const override;
@@ -75,7 +78,7 @@ public:
 
   std::vector<float> get_current_pos();
   void sit(int step, std::vector<float> current_pos);
-  void stand_up(int step, std::vector<float> current_pos);
+  void stand(int step, std::vector<float> current_pos);
   void move();
 
 private:
@@ -100,6 +103,9 @@ private:
   // IMU Sensor
   std::string imu_name_;
   std::vector<std::string> imu_interface_types_;
+  // Foot Force Sensor
+  std::string foot_force_name_;
+  std::vector<std::string> foot_force_interface_types_;
 
   std::unordered_map<
     std::string, std::vector<std::reference_wrapper<hardware_interface::LoanedCommandInterface>>*>
@@ -121,17 +127,14 @@ private:
 
   std::vector<float> cmd_{0.0, 0.0, 0.0};
   std::vector<float> latest_cmd_{0.0, 0.0, 0.0};
-  std::vector<float> sit_angles_, default_angles_, cmd_scale_;
-  std::vector<float> kps_, kds_;
-  float ang_vel_scale_{0.25}, dof_pos_scale_{1.0}, dof_vel_scale_{0.05};
-  float pos_action_scale_{0.5}, vel_action_scale_{10};
+  std::vector<float> initial_angles_, sit_angles_, default_angles_, cmd_scale_;
+  float action_scale_{1.0}, ang_vel_scale_{1.0}, dof_pos_scale_{1.0}, dof_vel_scale_{1.0}, kps_{0.0}, kds_{0.0};
 
   torch::jit::script::Module policy_;
   torch::Tensor obs_buffer_;
-  torch::Tensor prev_action_ = torch::zeros({6});
-  torch::Tensor gravity_vec;
+  torch::Tensor prev_action_ = torch::zeros({12});
 
-  int one_step_obs_size_{27}, obs_buf_size_{6};
+  int one_step_obs_size_{45}, obs_buf_size_{6};
 
                          
   std::vector<float> current_pos_;

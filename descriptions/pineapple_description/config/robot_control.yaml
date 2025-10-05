@@ -1,7 +1,7 @@
 # Controller Manager configuration
 controller_manager:
   ros__parameters:
-    update_rate: 500  # Hz
+    update_rate: 1000  # Hz
 
     # Define the available controllers
     joint_state_broadcaster:
@@ -10,8 +10,8 @@ controller_manager:
     imu_sensor_broadcaster:
       type: imu_sensor_broadcaster/IMUSensorBroadcaster
 
-    biped_wheel_controller:
-      type: biped_wheel_controller/BipedWheelController
+    pineapple_controller:
+      type: pineapple_controller/PineappleController
 
 
 
@@ -20,19 +20,20 @@ imu_sensor_broadcaster:
     sensor_name: "imu_sensor"
     frame_id: "imu_link"
 
-biped_wheel_controller:
+pineapple_controller:
   ros__parameters:
-    update_rate: 50  # control frequency 50 Hz
-    robot_pkg: "bipedwheel_description"
+    update_rate: 50  # Hz
+    robot_pkg: "pineapple_description"
     model_folder: "legged_gym"
-    # best policy: policy_Aug29_15-03-21_
-    policy_path: /home/crazydog/test/ros2_ws/src/reddog_ROS2Control/descriptions/bipedwheel_description/config/legged_gym/policy_Aug29_15-03-21_.pt
-    config_path: /home/crazydog/test/ros2_ws/src/reddog_ROS2Control/descriptions/bipedwheel_description/config/legged_gym/biped_wheel.yaml
+    policy_path: /home/csl/ros2_ws/src/csl_ros2_control/descriptions/pineapple_description/config/legged_gym/policy_1.pt
+    config_path: /home/csl/ros2_ws/src/csl_ros2_control/descriptions/pineapple_description/config/legged_gym/pineapple.yaml
     
     joints:
+      - L_hip_joint
       - L_thigh_joint
       - L_calf_joint
       - L_wheel_joint
+      - R_hip_joint
       - R_thigh_joint
       - R_calf_joint
       - R_wheel_joint

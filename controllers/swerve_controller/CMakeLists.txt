@@ -1,10 +1,9 @@
 cmake_minimum_required(VERSION 3.14)
-project(rl_quadruped_controller)
+project(swerve_controller)
 
 # Enable C++17
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_PREFIX_PATH "/home/crazydogv2/libtorch/lib") # set libtor
 
 # Find dependencies
 find_package(ament_cmake REQUIRED)
@@ -27,7 +26,7 @@ include_directories(
 )
 
 add_library(${PROJECT_NAME} SHARED
-  src/rl_quadruped_controller.cpp
+  src/swerve_controller.cpp
 )
 
 ament_target_dependencies(${PROJECT_NAME}
@@ -42,12 +41,8 @@ ament_target_dependencies(${PROJECT_NAME}
 )
 
 target_link_libraries(${PROJECT_NAME} 
-  ${TORCH_LIBRARIES}
   yaml-cpp 
 )
-target_include_directories(${PROJECT_NAME} PRIVATE ${TORCH_INCLUDE_DIRS})
-
-target_compile_definitions(${PROJECT_NAME} PRIVATE "TORCH_API_INCLUDE_EXTENSION_H")
 
 install(TARGETS ${PROJECT_NAME}
   DESTINATION lib
@@ -58,7 +53,7 @@ install(DIRECTORY include/
 )
 
 install(FILES
-  resource/rl_quadruped_controller.xml
+  resource/swerve_controller.xml
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -72,6 +67,6 @@ install(FILES
   DESTINATION share/${PROJECT_NAME}
 )
 
-pluginlib_export_plugin_description_file(controller_interface resource/rl_quadruped_controller.xml)
+pluginlib_export_plugin_description_file(controller_interface resource/swerve_controller.xml)
 
 ament_package()
