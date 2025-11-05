@@ -6,6 +6,9 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <vector>
+#include <Eigen/Dense>
+#include <cmath>
+#include <tuple>
 #include <hardware_interface/loaned_command_interface.hpp>
 #include <hardware_interface/loaned_state_interface.hpp>
 
@@ -78,6 +81,7 @@ public:
   void update_current_state();
   void move();
   void normalize_angle(float &angle, float &speed);
+  void updateOdom(float )
 
 private:
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_sub_;
@@ -127,6 +131,12 @@ private:
   std::vector<float> steering_cmd_{0.0, 0.0, 0.0, 0.0}, wheel_cmd_{0.0, 0.0, 0.0, 0.0}; 
 
   std::vector<float> x_offset_, y_offset_; 
+  Eigen::VectorXd qpos;
+  Eigen::VectorXd qvel;
+  Eigen::Vector4d default_angles;
+  Eigen::Matrix<float, 4, 2> wheel_positions;
+  float dt;
+  float x, y, yaw;
 
   std::chrono::steady_clock::time_point last_time_;
 };
