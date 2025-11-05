@@ -66,7 +66,7 @@ def launch_setup(context, *args, **kwargs):
     controller = Node(
         package="controller_manager",
         executable="spawner",
-        arguments=["swerve_controller", 
+        arguments=["pineapple_controller", 
                    "--controller-manager", "/controller_manager"],
     )
 
@@ -83,6 +83,7 @@ def launch_setup(context, *args, **kwargs):
         name='joy_node',
         output='screen',
     )
+
 
     return [
         robot_state_publisher,
@@ -108,7 +109,7 @@ def launch_setup(context, *args, **kwargs):
 def generate_launch_description():
     pkg_description = DeclareLaunchArgument(
         'pkg_description',
-        default_value='compal_amr_description',
+        default_value='pineapple_description',
         description='package for robot description'
     )
 

@@ -4,11 +4,11 @@ simulation_dt: 0.005
 # Controller update frequency (meets the requirement of simulation_dt * controll_decimation=0.02; 50Hz)
 control_decimation: 4
 
-kps: [20, 20, 20, 0, 20, 20, 20, 0]
+kps: [25, 25, 25, 0, 25, 25, 25, 0]
 kds: [0.5, 0.5, 0.5, 0.3, 0.5, 0.5, 0.5, 0.3]
 
 default_angles: [0, 1.2533, -2.0479, 0, 0, 1.2533, -2.0479, 0]
-sit_angles: [0.093, 1.49, -3.14, 0, -0.093, 1.49, -3.14, 0]
+sit_angles: [0.093, 1.49, -3.14, 0, 0.093, 1.49, -3.14, 0]
 
 lin_vel_scale: 2.0
 ang_vel_scale: 0.25

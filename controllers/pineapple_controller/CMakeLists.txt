@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 3.14)
-project(swerve_controller)
+project(pineapple_controller)
 
 # Enable C++17
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_PREFIX_PATH "/home/csl/torch/lib")
 
 # Find dependencies
 find_package(ament_cmake REQUIRED)
@@ -14,19 +15,19 @@ find_package(pluginlib REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
-find_package(Eigen3 REQUIRED)
 
+# Torch (PyTorch C++ API)
+find_package(Torch REQUIRED)
 
 # YAML CPP
 find_package(yaml-cpp REQUIRED)
 
 include_directories(
   include
-  ${EIGEN3_INCLUDE_DIRS}
 )
 
 add_library(${PROJECT_NAME} SHARED
-  src/swerve_controller.cpp
+  src/pineapple_controller.cpp
 )
 
 ament_target_dependencies(${PROJECT_NAME}
@@ -41,8 +42,12 @@ ament_target_dependencies(${PROJECT_NAME}
 )
 
 target_link_libraries(${PROJECT_NAME} 
+  ${TORCH_LIBRARIES}
   yaml-cpp 
 )
+target_include_directories(${PROJECT_NAME} PRIVATE ${TORCH_INCLUDE_DIRS})
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE "TORCH_API_INCLUDE_EXTENSION_H")
 
 install(TARGETS ${PROJECT_NAME}
   DESTINATION lib
@@ -53,7 +58,7 @@ install(DIRECTORY include/
 )
 
 install(FILES
-  resource/swerve_controller.xml
+  resource/pineapple_controller.xml
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -67,6 +72,6 @@ install(FILES
   DESTINATION share/${PROJECT_NAME}
 )
 
-pluginlib_export_plugin_description_file(controller_interface resource/swerve_controller.xml)
+pluginlib_export_plugin_description_file(controller_interface resource/pineapple_controller.xml)
 
 ament_package()

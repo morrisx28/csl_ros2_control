@@ -3,6 +3,7 @@
 #include <controller_interface/controller_interface.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <geometry_msgs/msg/twist.hpp>
+#include <torch/script.h>
 #include <rclcpp/rclcpp.hpp>
 
 #include <vector>
@@ -34,9 +35,6 @@ struct CtrlInterfaces
     imu_state_interface_;
 
     std::vector<std::reference_wrapper<hardware_interface::LoanedStateInterface>>
-    foot_force_state_interface_;
-
-    std::vector<std::reference_wrapper<hardware_interface::LoanedStateInterface>>
     odom_state_interface_;
 
     CtrlInterfaces() = default;
@@ -54,17 +52,16 @@ struct CtrlInterfaces
         joint_velocity_state_interface_.clear();
 
         imu_state_interface_.clear();
-        foot_force_state_interface_.clear();
     }
 };
 
-namespace swerve_controller
+namespace pineapple_controller
 {
 
-class SwerveController : public controller_interface::ControllerInterface
+class PineappleController : public controller_interface::ControllerInterface
 {
 public:
-  SwerveController();
+  PineappleController();
 
   controller_interface::InterfaceConfiguration command_interface_configuration() const override;
   controller_interface::InterfaceConfiguration state_interface_configuration() const override;
@@ -75,22 +72,25 @@ public:
 
   controller_interface::return_type update(const rclcpp::Time &, const rclcpp::Duration &) override;
 
-  void update_current_state();
+  std::vector<float> get_current_pos();
+  void sit(int step, std::vector<float> current_pos);
+  void stand_up(int step, std::vector<float> current_pos);
   void move();
-  void normalize_angle(float &angle, float &speed);
 
 private:
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr mode_sub_;
-  std::string mode_ = "move";
+  std::string mode_ = "sit";
   std::string prev_mode_;
   bool is_mode_change_ = false;
 
+  std::string policy_path_;
   std::string config_path_;
 
   CtrlInterfaces ctrl_interfaces_;
   std::vector<std::string> joint_names_;
   std::string base_name_ = "base";
+  std::vector<std::string> feet_names_;
   std::vector<std::string> command_interface_types_;
   std::vector<std::string> state_interface_types_;
 
@@ -119,16 +119,24 @@ private:
   };
 
   std::vector<float> cmd_{0.0, 0.0, 0.0};
-  std::vector<float> initial_angles_;
-  float wheel_b_, t_width_;
-  float cmd_scale_;
-  float steering_kps_{0.0}, steering_kds_{0.0}, wheel_kps_{0.0}, wheel_kds_{0.0};
-  std::vector<float> steering_angles_{0.0, 0.0, 0.0, 0.0}, wheel_vel_{0.0, 0.0, 0.0, 0.0}, ang_vel_{0.0, 0.0, 0.0}, quat_{0.0, 0.0, 0.0, 0.0}; 
-  std::vector<float> steering_cmd_{0.0, 0.0, 0.0, 0.0}, wheel_cmd_{0.0, 0.0, 0.0, 0.0}; 
+  std::vector<float> latest_cmd_{0.0, 0.0, 0.0};
+  std::vector<float> sit_angles_, default_angles_, cmd_scale_;
+  std::vector<float> kps_, kds_;
+  float ang_vel_scale_{1.0}, dof_pos_scale_{1.0}, dof_vel_scale_{1.0};
+  float pos_action_scale_{0.5}, vel_action_scale_{10};
 
-  std::vector<float> x_offset_, y_offset_; 
+  torch::jit::script::Module policy_;
+  torch::Tensor obs_buffer_;
+  torch::Tensor prev_action_ = torch::zeros({6}); // 8
+
+  int one_step_obs_size_{31}, obs_buf_size_{6};
+
+                         
+  std::vector<float> current_pos_;
+  float steps_ = 150.0; 
+  int step_ = 0;
 
   std::chrono::steady_clock::time_point last_time_;
 };
 
-}  // namespace swerve_controller
+}  // namespace pineapple_controller

@@ -50,21 +50,16 @@ controller_interface::InterfaceConfiguration SwerveController::state_interface_c
       conf.names.push_back(imu_name_ + "/" + interface_type);
   }
 
-  for (const auto& interface_type : foot_force_interface_types_)
-  {
-      conf.names.push_back(foot_force_name_ + "/" + interface_type);
-  }
 
   return conf;
 }
 
-rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RLQuadrupedController::on_init()
+rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn SwerveController::on_init()
 {
   try
   {
     auto node = get_node();
 
-    policy_path_ = auto_declare<std::string>("policy_path", "");
     config_path_ = auto_declare<std::string>("config_path", "");
 
     cmd_sub_ = node->create_subscription<geometry_msgs::msg::Twist>(
@@ -75,7 +70,7 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RLQuad
         cmd_[2] = msg->angular.z;
       });
 
-    // string: sit, stand, move  
+    // string: move  
     mode_sub_ = node->create_subscription<std_msgs::msg::String>(
       "/mode", 10, [this](const std_msgs::msg::String::SharedPtr msg)
       {
@@ -83,7 +78,6 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RLQuad
       });
 
     joint_names_ = auto_declare<std::vector<std::string>>("joints", joint_names_);
-    feet_names_ = auto_declare<std::vector<std::string>>("feet_names", feet_names_);
     command_interface_types_ =
         auto_declare<std::vector<std::string>>("command_interfaces", command_interface_types_);
     state_interface_types_ =
@@ -105,33 +99,29 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RLQuad
   return rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn::SUCCESS;
 }
 
-rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RLQuadrupedController::on_configure(const rclcpp_lifecycle::State &)
+rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn SwerveController::on_configure(const rclcpp_lifecycle::State &)
 {
   try
   {
     auto node = get_node();
 
-    policy_ = torch::jit::load(policy_path_);
     YAML::Node config = YAML::LoadFile(config_path_);
 
-    initial_angles_ = config["initial_angles"].as<std::vector<float>>();
-    sit_angles_ = config["sit_angles"].as<std::vector<float>>();
-    default_angles_ = config["default_angles"].as<std::vector<float>>();
-    kps_ = config["kps"].as<float>();
-    kds_ = config["kds"].as<float>();
+    initial_angles_ = config["default_angles"].as<std::vector<float>>();
+    steering_kps_ = config["steering_kps"].as<float>();
+    steering_kds_ = config["steering_kds"].as<float>();
+    wheel_kps_ = config["wheel_kps"].as<float>();
+    wheel_kds_ = config["wheel_kds"].as<float>();
+    wheel_b_ = config["wheelbase"].as<float>();
+    t_width_ = config["trackwidth"].as<float>();
 
-    action_scale_ = config["action_scale"].as<float>();
-    cmd_scale_ = config["cmd_scale"].as<std::vector<float>>();
-    ang_vel_scale_ = config["ang_vel_scale"].as<float>();
-    dof_pos_scale_ = config["dof_pos_scale"].as<float>();
-    dof_vel_scale_ = config["dof_vel_scale"].as<float>();
-
+    cmd_scale_ = config["cmd_scale"].as<float>();
     cmd_ = config["cmd_init"].as<std::vector<float>>();
 
-    obs_buf_size_ = config["obs_buffer_size"].as<int>();
-    one_step_obs_size_ = config["one_step_obs_size"].as<int>();
+    // FL FR RL RR
+    x_offset_ = {(wheel_b_ / 2), (wheel_b_ / 2), -(wheel_b_ / 2), -(wheel_b_ / 2)}; 
+    y_offset_ = {(t_width_ / 2), -(t_width_ / 2), (t_width_ / 2), -(t_width_ / 2)};
 
-    obs_buffer_ = torch::zeros({1, obs_buf_size_ * one_step_obs_size_});
   }
   catch (const std::exception &e)
   {
@@ -142,7 +132,7 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RLQuad
   return CallbackReturn::SUCCESS;
 }
 
-rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RLQuadrupedController::on_activate(const rclcpp_lifecycle::State &)
+rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn SwerveController::on_activate(const rclcpp_lifecycle::State &)
 {
   try
   { 
@@ -170,17 +160,11 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RLQuad
         {
             ctrl_interfaces_.imu_state_interface_.emplace_back(interface);
         }
-        else if (interface.get_prefix_name() == foot_force_name_)
-        {
-            ctrl_interfaces_.foot_force_state_interface_.emplace_back(interface);
-        }
         else
         {
             state_interface_map_[interface.get_interface_name()]->push_back(interface);
         }
     }
-
-    current_pos_ = get_current_pos();
   }
   catch (const std::exception &e)
   {
@@ -192,156 +176,102 @@ rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn RLQuad
 }
 std::chrono::steady_clock::time_point last_time_;
 
-controller_interface::return_type RLQuadrupedController::update(const rclcpp::Time &, const rclcpp::Duration &)
+controller_interface::return_type SwerveController::update(const rclcpp::Time &, const rclcpp::Duration &)
 {
-  // Check the frequency
-  // auto now = std::chrono::steady_clock::now();
-  // if (last_time_.time_since_epoch().count() != 0) {
-  //   auto duration = std::chrono::duration_cast<std::chrono::duration<double>>(now - last_time_);
-  //   double frequency = 1.0 / duration.count();  // 計算頻率（Hz）
-  //   // std::cout << "Update frequency: " << frequency << " Hz" << std::endl;
-  // }
-  // last_time_ = now;
 
   if (mode_ != prev_mode_) {
     is_mode_change_ = true;
-    step_ = 0;
-    current_pos_ = get_current_pos();
     prev_mode_ = mode_;
   } else {
     is_mode_change_ = false;
   }
 
-  if (mode_ == "sit") {
-    sit(step_, current_pos_);
-  } else if (mode_ == "stand") {
-    stand(step_, current_pos_);
-  } else if (mode_ == "move") {
+  if (mode_ == "move") {
     move();
   } else {
     RCLCPP_ERROR(get_node()->get_logger(), "Invalid mode: %s", mode_.c_str());
   }
 
-  if (step_ < steps_) {
-    step_++;
-  }
-
   return controller_interface::return_type::OK;
 }
 
-std::vector<float> RLQuadrupedController::get_current_pos()
+void SwerveController::update_current_state()
 {
-  std::vector<float> pos(12);
-  for (int i = 0; i < 12; ++i)
+  for (int i = 0; i < 4; ++i)
   {
-    pos[i] = ctrl_interfaces_.joint_position_state_interface_[i].get().get_value();
+    steering_angles_[i] = ctrl_interfaces_.joint_position_state_interface_[i].get().get_value();
   }
-  return pos;
-}
 
-void RLQuadrupedController::sit(int step, std::vector<float> current_pos) 
-{
-  if (step < steps_) {
-    double phase = float(step)/float(steps_);
-    for (int i = 0; i < 12; ++i)
-    {
-      float target_pos = current_pos[i] * float(1 - phase) + sit_angles_[i] * phase;
-      ctrl_interfaces_.joint_position_command_interface_[i].get().set_value(target_pos);
-      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_);
-      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_);
-    }
-  } else {
-    for (int i = 0; i < 12; ++i)
-    {
-      ctrl_interfaces_.joint_position_command_interface_[i].get().set_value(sit_angles_[i]);
-      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_);
-      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_);
-    }
-  }
-}
-
-void RLQuadrupedController::stand(int step, std::vector<float> current_pos) 
-{
-  if (step < steps_) {
-    double phase = float(step)/float(steps_);
-    for (int i = 0; i < 12; ++i)
-    {
-      float target_pos = current_pos[i] * float(1 - phase) + default_angles_[i] * phase;
-      ctrl_interfaces_.joint_position_command_interface_[i].get().set_value(target_pos);
-      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_);
-      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_);
-    }
-  } else {
-    for (int i = 0; i < 12; ++i)
-    {
-      ctrl_interfaces_.joint_position_command_interface_[i].get().set_value(default_angles_[i]);
-      ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_);
-      ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_);
-    }
-  }
-}
-
-void RLQuadrupedController::move()
-{
-  std::vector<float> pos(12), vel(12), ang_vel(3), quat(4);
-
-  for (int i = 0; i < 12; ++i)
+  for (int i = 0; i < 4; ++i)
   {
-    pos[i] = ctrl_interfaces_.joint_position_state_interface_[i].get().get_value();
+    wheel_vel_[i] = ctrl_interfaces_.joint_velocity_state_interface_[i+4].get().get_value();
   }
-  for (int i = 0; i < 12; ++i)
-  {
-    vel[i] = ctrl_interfaces_.joint_velocity_state_interface_[i].get().get_value();
-  }
-
-
-  quat[0] = ctrl_interfaces_.imu_state_interface_[0].get().get_value();
-  quat[1] = ctrl_interfaces_.imu_state_interface_[1].get().get_value();
-  quat[2] = ctrl_interfaces_.imu_state_interface_[2].get().get_value();
-  quat[3] = ctrl_interfaces_.imu_state_interface_[3].get().get_value();
-  ang_vel[0] = ctrl_interfaces_.imu_state_interface_[4].get().get_value();
-  ang_vel[1] = ctrl_interfaces_.imu_state_interface_[5].get().get_value();
-  ang_vel[2] = ctrl_interfaces_.imu_state_interface_[6].get().get_value();
-
-  std::vector<float> gravity(3);
-  gravity[0] = 2 * (quat[1] * quat[3] - quat[0] * quat[2]);
-  gravity[1] = -2 * (quat[2] * quat[3] + quat[0] * quat[1]);
-  gravity[2] = -1 - 2 * (quat[1] * quat[1] + quat[2] * quat[2]);
-
-  std::vector<torch::Tensor> obs_parts = {
-    torch::tensor(latest_cmd_) * torch::tensor(cmd_scale_),
-    torch::tensor(ang_vel) * ang_vel_scale_ ,
-    torch::tensor(gravity),
-    (torch::tensor(pos) - torch::tensor(default_angles_)) * dof_pos_scale_,
-    torch::tensor(vel) * dof_vel_scale_,
-    prev_action_
-  };
-
-  auto obs = torch::cat(obs_parts).unsqueeze(0);
   
-  obs_buffer_ = torch::cat({
-    obs, 
-    obs_buffer_.slice(1, 0, obs_buffer_.size(1) - one_step_obs_size_)
-  }, 1);
-
-  obs = torch::clamp(obs, -100, 100);
-
-  auto action = policy_.forward({obs_buffer_}).toTensor().squeeze();
-  prev_action_ = action;
-
-  for (int i = 0; i < 12; ++i)
-  {
-    ctrl_interfaces_.joint_position_command_interface_[i].get().set_value(action[i].item<float>() * action_scale_ + default_angles_[i]);
-    ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(kps_);
-    ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(kds_);
-  }
-
   for (int i = 0; i < 3; ++i)
   {
-    latest_cmd_[i] = cmd_[i];
+    ang_vel_[i] = ctrl_interfaces_.imu_state_interface_[i+4].get().get_value();
+  }
+
+  for (int i = 0; i < 4; ++i)
+  {
+    quat_[i] = ctrl_interfaces_.imu_state_interface_[i].get().get_value();
   }
 }
 
-} // namespace rl_quadruped_controller
+void SwerveController::normalize_angle(float &angle, float &speed)
+{
+  angle = std::fmod(angle + M_PI, 2.0 * M_PI);
+  if (angle < 0)
+      angle += 2.0 * M_PI;
+  angle -= M_PI;
 
-PLUGINLIB_EXPORT_CLASS(rl_quadruped_controller::RLQuadrupedController, controller_interface::ControllerInterface)
+  // if beyond 90°, flip direction
+  if (angle > M_PI_2) {
+      angle -= M_PI;
+      speed *= -1.0;
+  } else if (angle < -M_PI_2) {
+      angle += M_PI;
+      speed *= -1.0;
+  }
+}
+
+void SwerveController::move()
+{
+  update_current_state(); 
+
+  for (int i = 0; i < 4; ++i)
+  {
+    float delta_vx = -cmd_[2] * y_offset_[i];
+    float delta_vy = cmd_[2] * x_offset_[i];
+
+    float total_vx = cmd_[0] + delta_vx;
+    float total_vy = cmd_[1] + delta_vy;
+
+    float speed = std::sqrt(total_vx * total_vx + total_vy * total_vy);
+    float angle = std::atan2(total_vy, total_vx);
+    normalize_angle(angle, speed);
+    steering_cmd_[i] = angle;
+    wheel_cmd_[i] = speed;
+  }
+  
+  // Steering motor control
+  for (int i = 0; i < 4; ++i)
+  {
+    ctrl_interfaces_.joint_position_command_interface_[i].get().set_value(steering_cmd_[i]);
+    ctrl_interfaces_.joint_kp_command_interface_[i].get().set_value(steering_kps_);
+    ctrl_interfaces_.joint_kd_command_interface_[i].get().set_value(steering_kds_);
+  }
+
+  // Wheel motor control
+  for (int i = 0; i < 4; ++i)
+  {
+    ctrl_interfaces_.joint_velocity_command_interface_[i+4].get().set_value(wheel_cmd_[i] * cmd_scale_);
+    ctrl_interfaces_.joint_kp_command_interface_[i+4].get().set_value(wheel_kps_);
+    ctrl_interfaces_.joint_kd_command_interface_[i+4].get().set_value(wheel_kds_);
+  }
+
+}
+
+} // namespace swerve_controller
+
+PLUGINLIB_EXPORT_CLASS(swerve_controller::SwerveController, controller_interface::ControllerInterface)

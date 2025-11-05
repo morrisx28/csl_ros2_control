@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<library path="pineapple_controller">
+  <class name="pineapple_controller/PineappleController"
+         type="pineapple_controller::PineappleController"
+         base_class_type="controller_interface::ControllerInterface">
+    <description>Test controller for pineapple robots using ROS2 Control</description>
+  </class>
+</library>
