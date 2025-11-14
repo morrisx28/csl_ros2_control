@@ -301,6 +301,8 @@ void PineappleController::stand_up(int step, std::vector<float> current_pos)
 //   gravity[1] = -2 * (quat[2] * quat[3] + quat[0] * quat[1]);
 //   gravity[2] = 1 - 2 * (quat[0] * quat[0] + quat[3] * quat[3]);
 
+//   torch::autograd::GradMode::set_enabled(false);
+
 //   std::vector<torch::Tensor> obs_parts = {
 //     torch::tensor(latest_cmd_) * torch::tensor(cmd_scale_),
 //     torch::tensor(ang_vel) * ang_vel_scale_,
@@ -390,6 +392,8 @@ void PineappleController::move()
   gravity[0] = 2 * (-quat[1] * quat[3] + quat[0] * quat[2]);
   gravity[1] = -2 * (quat[2] * quat[3] + quat[0] * quat[1]);
   gravity[2] = 1 - 2 * (quat[0] * quat[0] + quat[3] * quat[3]);
+
+  torch::autograd::GradMode::set_enabled(false);
 
   std::vector<torch::Tensor> obs_parts = {
     torch::tensor(latest_cmd_) * torch::tensor(cmd_scale_),
